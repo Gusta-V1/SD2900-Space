@@ -1,9 +1,8 @@
 import json
-import random
+import itertools
 import numpy as np
 from dataclasses import dataclass
 from scipy.optimize import minimize
-from scipy.special import comb
 
 
 # Precision
@@ -16,6 +15,16 @@ J2 = 1082.63*1e-6
 
 # Vehicle properties
 # mass, thrust...
+
+# Insertion orbit parameters
+a_min = R + 800             # Minimum altitude
+i_min = np.deg2rad(28.5)    # Minimum inclination
+
+# Cluster selection limits
+#   Filter cluster candidates on semi-major axis, inclination and raan (estimated dv costs at a=600 km i=74 deg)
+inclination_limit = np.deg2rad(5.0) # (deg) (about 3.4 km/s)
+raan_limit = np.deg2rad(5.0)        # (deg) (about 3.53 km/s, orbital precession only 0.45 deg per month)
+a_limit = 200                       # (km) (about 3.45 km/s when raising)
 
 # Utilities
 # {"OBJECT_NAME":"COSMOS 2251",
@@ -245,54 +254,53 @@ print(f"Total objects: {num_objects}")
 # Main program
 #   Note: That leads require thrust and weight data
 num_targets = 8         # Number of targets
-suboptimal_cluster = 50 # N:th best cluster
-# Do random search for combinations of n sats with i iterations (cap to nCr(num_objects, n))
-search_iters = 10000
-search_iters = min(search_iters, int(comb(num_objects, num_targets)))
+suboptimal_targets = 10 # N:th best cluster
 
 clusters=[]
-for i in range(search_iters):
-    base_key = random.choice(list(targets.keys()))
+for base_key in list(targets.keys()): # TODO: Multithreading
     base = targets[base_key]
     candidates_keys = list(targets.keys() - set(base_key))
-
-    # Filter remaining targets based on inclination and raan (estimated dv costs at a=600 km i=74 deg)
-    inclination_limit = np.deg2rad(5.0) # (deg) (about 3.4 km/s)
-    raan_limit = np.deg2rad(5.0)        # (deg) (about 3.53 km/s, orbital precession only 0.45 deg per month)
-    a_limit = 200                       # (km) (about 3.45 km/s when raising)
 
     candidates = [targets[key] for key in candidates_keys if filter_candidate(targets[key], base, a_limit, inclination_limit, raan_limit)]
     if len(candidates) < num_targets:
         continue
 
-    # Sample candidates and minimize
-    cluster = list([base] + random.choices(candidates, k=num_targets-1))
+    # Sample combinations of candidates and minimize
+    cluster_list = [[base, list(s)] for s in itertools.combinations(candidates, num_targets-1)]
+    for cluster in cluster_list:
+        #Initial params
+        a0 = np.mean([t.a for t in candidates])
+        e0 = np.mean([t.e for t in candidates])
+        i0 = np.mean([t.i for t in candidates])
+        raan0 = np.mean([t.raan for t in candidates])
+        x0 = np.array([a0, e0, i0, raan0], dtype=FLOAT)
 
-    #Initial params
-    a0 = np.mean([t.a for t in candidates])
-    e0 = np.mean([t.e for t in candidates])
-    i0 = np.mean([t.i for t in candidates])
-    raan0 = np.mean([t.raan for t in candidates])
-    x0 = np.array([a0, e0, i0, raan0], dtype=FLOAT)
+        bounds=[
+            (a_min, None),      # Semi-major axis
+            (0, 1),             # Eccentricity
+            (i_min, np.pi/2),   # Inclination
+            (0, 2*np.pi)        # RAAN
+        ]
+        result = minimize(cluster_dv_max, x0, args=(candidates,), method='SLSQP', bounds=bounds)
 
-    bounds=[
-        (R, None),      # Semi-major axis
-        (0, 1),         # Eccentricity
-        (0, np.pi/2),   # Inclination
-        (0, 2*np.pi)    # RAAN
-    ]
-    result = minimize(cluster_dv_max, x0, args=(candidates,), method='SLSQP', bounds=bounds)
-
-    clusters.append((cluster, result))
+        clusters.append((cluster, result))
 
 # Sort results
 # (cluster, OptimizeResult) https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.OptimizeResult.html#scipy.optimize.OptimizeResult
 clusters = sorted(clusters, key=lambda c: c[1].fun)
-    
+
+# Remove n best targets
+suboptimal_clusters = clusters
+for i in range(suboptimal_targets):
+    removed = [o for o in suboptimal_clusters[0]]
+    suboptimal_clusters = [c for c in suboptimal_clusters if removed.isdisjoint(c[0])]
+    suboptimal_clusters = sorted(suboptimal_clusters, key=lambda c: c[1].fun)
+
+print(f"Computations: {len(clusters)}")   
 print(f"Optimal cluster: {clusters[0][0]}")
 print(f"Optimal Parameters: \n\ta0 = {clusters[0][1].x[0]:.3f} km, \n\te0 = {clusters[0][1].x[1]:.8f}, \n\ti0 = {clusters[0][1].x[2]:.6f} deg, \n\tRAAN0 = {clusters[0][1].x[3]:.6f}")
 print(f"Minimum Total Delta V (km/s): {clusters[0][1].fun} km/s")
 print(80*"-")
-print(f"{suboptimal_cluster}:th Optimal cluster: {clusters[suboptimal_cluster][0]}")
-print(f"{suboptimal_cluster}:th Optimal Parameters: \n\ta0 = {clusters[suboptimal_cluster][1].x[0]:.3f} km, \n\te0 = {clusters[suboptimal_cluster][1].x[1]:.8f}, \n\ti0 = {clusters[suboptimal_cluster][1].x[2]:.6f} deg, \n\tRAAN0 = {clusters[suboptimal_cluster][1].x[3]:.6f}")
-print(f"{suboptimal_cluster}:th Minimum Total Delta V (km/s): {clusters[suboptimal_cluster][1].fun} km/s")
+print(f"{suboptimal_targets}:th Optimal cluster: {suboptimal_clusters[0][0]}")
+print(f"{suboptimal_targets}:th Optimal Parameters: \n\ta0 = {suboptimal_clusters[0][1].x[0]:.3f} km, \n\te0 = {suboptimal_clusters[0][1].x[1]:.8f}, \n\ti0 = {suboptimal_clusters[0][1].x[2]:.6f} deg, \n\tRAAN0 = {suboptimal_clusters[0][1].x[3]:.6f}")
+print(f"{suboptimal_targets}:th Minimum Total Delta V (km/s): {suboptimal_clusters[0][1].fun} km/s")
