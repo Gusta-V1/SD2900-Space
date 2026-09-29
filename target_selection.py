@@ -73,6 +73,27 @@ class Object:
     M: FLOAT
     Bs: FLOAT
 
+    def __repr__(self):
+        return (
+            "Object(\n"
+            f"    name={self.name!r},\n"
+            f"    object_id={self.object_id!r},\n"
+            f"    norad_id={self.norad_id!r},\n"
+            f"    epoch={self.epoch!r},\n"
+            f"    rev_at_epoch={self.rev_at_epoch},\n"
+            f"    a={self.a:.3f} km,\n"
+            f"    n={self.n:.6e} rad/s,\n"
+            f"    nd={self.nd:.6e} rad/s²,\n"
+            f"    ndd={self.ndd:.6e} rad/s³,\n"
+            f"    e={self.e:.8f},\n"
+            f"    i={self.i:.6f} rad,\n"
+            f"    raan={self.raan:.6f} rad,\n"
+            f"    aper={self.aper:.6f} rad,\n"
+            f"    M={self.M:.6f} rad,\n"
+            f"    Bs={self.Bs:.6e} 1/R\n"
+            ")"
+        )
+
 def mean_motion_to_a(n: FLOAT) -> tuple[FLOAT, FLOAT]:
     """
     Calculate semi-major axis (km) from mean motion (rad/s).
@@ -153,7 +174,7 @@ def cluster_dv_max(x, cluster: tuple[Object]):
         x (np.ndarray([a, e, i, raan])): - Initial orbit parameters
         cluster (tuple[Object]): - List of targets
     """
-    a0, e0, i0, raan0 = x # NOTE: These get modified with some maneuvers
+    a0, e0, i0, raan0 = x
 
     dvtot=np.empty(len(cluster))
     for j in range(len(cluster)):
@@ -223,7 +244,8 @@ print(f"Total objects: {num_objects}")
 
 # Main program
 #   Note: That leads require thrust and weight data
-num_targets = 8 # Number of targets
+num_targets = 8         # Number of targets
+suboptimal_cluster = 50 # N:th best cluster
 # Do random search for combinations of n sats with i iterations (cap to nCr(num_objects, n))
 search_iters = 10000
 search_iters = min(search_iters, int(comb(num_objects, num_targets)))
@@ -268,9 +290,9 @@ for i in range(search_iters):
 clusters = sorted(clusters, key=lambda c: c[1].fun)
     
 print(f"Optimal cluster: {clusters[0][0]}")
-print(f"Optimal Parameters: a0 = {clusters[0][1].x[0]} km, e0 = {clusters[0][1].x[1]}, i0 = {clusters[0][1].x[2]} deg, RAAN0 = {clusters[0][1].x[3]}")
+print(f"Optimal Parameters: \n\ta0 = {clusters[0][1].x[0]:.3f} km, \n\te0 = {clusters[0][1].x[1]:.8f}, \n\ti0 = {clusters[0][1].x[2]:.6f} deg, \n\tRAAN0 = {clusters[0][1].x[3]:.6f}")
 print(f"Minimum Total Delta V (km/s): {clusters[0][1].fun} km/s")
-
-print(f"50:th Optimal cluster: {clusters[50][0]}")
-print(f"50:th Optimal Parameters: a0 = {clusters[50][1].x[0]} km, e0 = {clusters[50][1].x[1]}, i0 = {clusters[50][1].x[2]} deg, RAAN0 = {clusters[50][1].x[3]}")
-print(f"50:th Minimum Total Delta V (km/s): {clusters[50][1].fun} km/s")
+print(80*"-")
+print(f"{suboptimal_cluster}:th Optimal cluster: {clusters[suboptimal_cluster][0]}")
+print(f"{suboptimal_cluster}:th Optimal Parameters: \n\ta0 = {clusters[suboptimal_cluster][1].x[0]:.3f} km, \n\te0 = {clusters[suboptimal_cluster][1].x[1]:.8f}, \n\ti0 = {clusters[suboptimal_cluster][1].x[2]:.6f} deg, \n\tRAAN0 = {clusters[suboptimal_cluster][1].x[3]:.6f}")
+print(f"{suboptimal_cluster}:th Minimum Total Delta V (km/s): {clusters[suboptimal_cluster][1].fun} km/s")
