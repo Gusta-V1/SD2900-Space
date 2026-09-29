@@ -34,8 +34,8 @@ mu_E = 3.986004418E14;
 R_E = 6371E3;
 
 C_D = 2.2;
-A = 2*2;
-m = 900;
+A = 4.5; % Frontal area
+m = 1435 + 900; % Combined debris + vehicle mass
 B = C_D*A/m;
 N = length(atm_table.Altitude_km);
 %B = 2.252378E-03;
@@ -45,7 +45,7 @@ deltaT = zeros(N,2);
 
 dt = @(H,Hinit,Hscale,rho_0) - Hscale / (sqrt(mu_E*R_E)*B*rho_0)*(exp(H/Hscale)-exp(Hinit/Hscale));
 
-target_time = 25*365*24*60*60;
+target_time = 25*365*24*60*60; % Target time in seconds
 
 rho_0 = atm_table.Density_kgm3./exp(-atm_table.Altitude_km./atm_table.ScaleHeight_km);
 
