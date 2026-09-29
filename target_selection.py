@@ -11,17 +11,19 @@ FLOAT = np.float64
 N_WORKERS = None
 
 # Earth Constants: https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html
-MU = 0.39860*1e6  # km^3/s^2
-R = 6371.000      # km
+MU = 0.39860*1e6  # (km^3/s^2)
+R = 6371.000      # (km)
 J2 = 1082.63*1e-6
 
 # Vehicle properties
-# mass, thrust...
+#drv_mass = 
+#drv_thrust = 250*1e-3 # (N)
+debris_mass = 1435 # (kg)
 
 # Main options
 num_targets = 8         # Number of targets
-suboptimal_targets = 2  # N:th best cluster
-object_dataset = r"cosmos-2251-debris.json"
+suboptimal_targets = 5  # N:th best cluster
+object_dataset = r"rb-750-1000-debris.json"
 
 # Insertion and target orbit parameters
 at_min = R + 800             # Minimum target altitude
@@ -143,10 +145,10 @@ def read_tle(entry):
         nd,
         ndd,
         FLOAT(entry["ECCENTRICITY"]),
-        np.deg2rad(entry["INCLINATION"], dtype=FLOAT),
-        np.deg2rad(entry["RA_OF_ASC_NODE"], dtype=FLOAT),
-        np.deg2rad(entry["ARG_OF_PERICENTER"], dtype=FLOAT),
-        np.deg2rad(entry["MEAN_ANOMALY"], dtype=FLOAT),
+        np.deg2rad(FLOAT(entry["INCLINATION"])),
+        np.deg2rad(FLOAT(entry["RA_OF_ASC_NODE"])),
+        np.deg2rad(FLOAT(entry["ARG_OF_PERICENTER"])),
+        np.deg2rad(FLOAT(entry["MEAN_ANOMALY"])),
         FLOAT(entry["BSTAR"])
     )
     return target
@@ -195,6 +197,7 @@ def cluster_dv_max(x, cluster: tuple[Object]):
     dvtot=np.empty(len(cluster))
     for j in range(len(cluster)):
         obj = cluster[j]
+        # TODO: Calculate for a given point in time? (add time parameter/constraint?)
         a = obj.a
         e = obj.e
         i = obj.i
@@ -294,7 +297,8 @@ num_objects = len(targets)
 # Main program
 #   Note: That leads require thrust and weight data
 #   TODO: Take orbital precession into consideration, 
-#     (also create other function to build burn plan, that is overkill for this as this should be efficient)
+#     (also create other function to build burn plan)
+#     Move generic functions to utils or something?
 if __name__ == '__main__':
     print(f"Total objects: {num_objects}")
 
@@ -315,13 +319,28 @@ if __name__ == '__main__':
 
     print(f"Computations: {len(clusters)}")   
     print(f"Optimal cluster: {clusters[0][0]}")
-    print(f"Optimal Parameters: \n\ta0 = {clusters[0][1].x[0]:.3f} km, \n\te0 = {clusters[0][1].x[1]:.8f}, \n\ti0 = {clusters[0][1].x[2]:.6f} deg, \n\tRAAN0 = {clusters[0][1].x[3]:.6f}")
+    print(f"Optimal Parameters: \n\ta0 = {clusters[0][1].x[0]:.3f} km, \n\te0 = {clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(clusters[0][1].x[2]):.6f} deg, \n\tRAAN0 = {np.rad2deg(clusters[0][1].x[3]):.6f} deg")
     print(f"Minimum Total Delta V (km/s): {clusters[0][1].fun} km/s")
+
+
+    # Save optimal cluster and insertion orbit
+    data = {
+        "cluster": [str(target.norad_id) for target in clusters[0][0]],
+        "insertion_orbit": {
+            "a": clusters[0][1].x[0],
+            "e": clusters[0][1].x[1],
+            "i": clusters[0][1].x[2],
+            "raan": clusters[0][1].x[3],
+        },
+    }
+    with open("cluster-solution.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
     
     if len(suboptimal_clusters) == 0:
         print(f"ERROR: Could not get {suboptimal_targets}:nd optimal cluster, try lowering 'suboptimal_targets'")
     else:
         print(80*"-")
         print(f"{suboptimal_targets}:th Optimal cluster: {suboptimal_clusters[0][0]}")
-        print(f"{suboptimal_targets}:th Optimal Parameters: \n\ta0 = {suboptimal_clusters[0][1].x[0]:.3f} km, \n\te0 = {suboptimal_clusters[0][1].x[1]:.8f}, \n\ti0 = {suboptimal_clusters[0][1].x[2]:.6f} deg, \n\tRAAN0 = {suboptimal_clusters[0][1].x[3]:.6f}")
+        print(f"{suboptimal_targets}:th Optimal Parameters: \n\ta0 = {suboptimal_clusters[0][1].x[0]:.3f} km, \n\te0 = {suboptimal_clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(suboptimal_clusters[0][1].x[2]):.6f} deg, \n\tRAAN0 = {np.rad2deg(suboptimal_clusters[0][1].x[3]):.6f} deg")
         print(f"{suboptimal_targets}:th Minimum Total Delta V (km/s): {suboptimal_clusters[0][1].fun} km/s")
