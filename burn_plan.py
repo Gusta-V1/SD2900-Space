@@ -1,11 +1,7 @@
 import json
 import numpy as np
-from core import FLOAT, NUM_WORKERS, R, MASS_DICT, Object, load_objects
+from core import FLOAT, NUM_WORKERS, R, G0, A_DISPOSAL, DRV_DMASS, MASS_DICT, DRV_THRUST, Object, load_objects
 
-
-
-# Deorbit
-a_deorbit = R + 500 # ish (km) (check in matlab after mass estimation)
 
 
 # Load data

@@ -3,13 +3,16 @@ import itertools
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 from scipy.optimize import minimize
-from core import FLOAT, NUM_WORKERS, R, Object, load_objects, dv_a, dv_e, dv_i, dv_raan
+from core import FLOAT, NUM_WORKERS, R, G0, A_DISPOSAL, DRV_DMASS, MASS_DICT, DRV_ISP, Object, load_objects, dv_a, dvs_rendezvous
 
 
 
 # Main options
 num_targets = 8         # Number of targets
 suboptimal_targets = 3  # N:th best cluster
+
+# Launch window
+#TUPLE OF EPOCHS TIMESTAMPS TODO: do
 
 # Insertion and target orbit parameters
 at_min = R + 800             # Minimum target altitude
@@ -44,52 +47,25 @@ def cluster_dv_max(x, cluster: tuple[Object]):
     for j in range(len(cluster)):
         obj = cluster[j]
         # TODO: Calculate for a given point in time? (add time parameter/constraint?), time in seconds since reference time(stamp) t_ref
+        #   (maybe also add arg of periapsis?)
         a = obj.a
         e = obj.e
         i = obj.i
         raan = obj.raan
 
-        # Burn plan logic
-        # If final orbit apoapsis lower than current orbit: 
-        # If final orbit inclination lower than current orbit:
-        #   1. Change inclination to match target
-        #   2. Change RAAN to match target (add lead, drift differs until eccentricity and semi major is identical)
-        # If final orbit inclination higher than current orbit:
-        #   1. Change RAAN to match target (add lead, drift differs until inclination, eccentricity and semi major is identical))
-        #   2. Change inclination to match target
-        # 3. Change eccentricity to match target (set argument of periapsis, include lead, drift differs until semi-major is identical)
-        # 4. Change altitude to match semi-major axis and phase (position in orbit relative target).
-        # 
-        # If final orbit apoapsis higher than current orbit:
-        # 1. Change altitude to match semi-major axis and phase (position in orbit relative target).
-        # 2. Change eccentricity to match target (set argument of periapsis, include lead, drift differs until inclination and raan is identical)
-        # If final orbit inclination lower than current orbit:
-        #   3. Change inclination to match target
-        #   4. Change RAAN to match target
-        # If final orbit inclination higher than current orbit:
-        #   3. Change RAAN to match target (add lead, drift differs until inclination is identical)
-        #   4. Change inclination to match target
+        # NOTE: Better solution would be to:
+        #   Minimize the maximum fuel fuel required for a DRV to complete its mission.
 
-        if a<a0:
-            if i<i0:
-                dvi = dv_i(i0, i, a0)
-                dvraan = dv_raan(raan0, raan, a0, i)
-            else:
-                dvraan = dv_raan(raan0, raan, a0, i0)
-                dvi = dv_i(i0, i, a0)
-            dve = dv_e(e0, e, a0)
-            dva = dv_a(a0, a)
-        else:
-            dva = dv_a(a0, a)
-            dve = dv_e(e0, e, a)
-            if i<i0:
-                dvi = dv_i(i0, i, a)
-                dvraan = dv_raan(raan0, raan, a, i)
-            else:
-                dvraan = dv_raan(raan0, raan, a, i0)
-                dvi = dv_i(i0, i, a)
+        dv_rendezvous = sum(dvs_rendezvous(a0, a, e0, e, i0, i, raan0, raan))
+        #dv_disposal = dv_a(a, A_DISPOSAL)
 
-        dvtot[j] = dva + dve + dvi + dvraan
+        #TODO: SHOULD THE PROP MASS CALCULATION BE MOVED INTO CORE? IT WILL BE USED IN ALL THREE FILES
+        #  SHOULD PROBABLY BE SPLIT INTO A FUNCTION THAT TAKES PAYLOAD AND DV, 
+        #  CAN THUS BE REUSED TO GET ACCURATE TIMES FOR BURN PLANNING
+        #mp2 = (DRV_DMASS + MASS_DICT[obj.name])*(np.exp(dv_disposal/(DRV_ISP*G0)) - 1)
+        #mp1 = (DRV_DMASS + mp2)*(np.exp(dv_rendezvous/(DRV_ISP*G0)) - 1)
+
+        dvtot[j] = dv_rendezvous
 
     return np.max(dvtot)
 
@@ -132,6 +108,7 @@ num_objects = len(targets)
 
 
 # Main program
+#   TODO: SHOULD ARG OF PERIAPSIS BE CONSIDERED???
 #   Note: That leads require thrust and weight data
 #   TODO: Take orbital precession into consideration, 
 #     (also create other function to build burn plan)
