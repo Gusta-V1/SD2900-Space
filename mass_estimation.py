@@ -1,8 +1,9 @@
 import json
 import numpy as np
-from core import FLOAT, NUM_WORKERS, R, MASS_DICT, Object, load_objects
+from core import FLOAT, NUM_WORKERS, R, G0, DRV_ISP, DRV_DMASS, MASS_DICT, Object, load_objects, dv_a
 
 
+# Assumed
 
 # Deorbit
 a_deorbit = R + 500 # ish (km) (check in matlab after mass estimation)
@@ -23,7 +24,19 @@ i0 = orbit["i"]         # (rad)
 raan0 = orbit["raan"]   # (rad)
 #t_0 = # Time of insertion(at periapsis) (timestamp?)
 
+# Get max required deorbit Delta v
+dv_deorbit = max([dv_a(obj.a, a_deorbit) for obj in cluster])
+#GET MAX MASS
 
-# Calculate burn plan (with times, dv, (and fuel requirements)) for each DRV
-# When need debris mass, just check with MASS_DICT[name]
+dv_rendevous = 0.7 # Add margin? (km/s)
 
+# Calculate propellant masses
+mp2 = (DRV_DMASS + 1435)*(np.exp(dv_deorbit/(DRV_ISP*G0)) - 1) #TODO, CALCULATE max per probe to support diff target vars
+
+mp1 = (DRV_DMASS + mp2)*(np.exp(dv_deorbit/(DRV_ISP*G0)) - 1)
+
+print(mp2)
+print(mp1)
+print(mp1+mp2+DRV_DMASS)
+
+print(dv_deorbit)
