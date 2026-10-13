@@ -13,7 +13,7 @@ i = deg2rad(82.95426);                   % Target inclination (Radians)
 p.beta = asin(cos(i)/cos(Lat));          % INERTIAL azimuth of the target orbit plane (Radians)
 p.beta_steer = p.beta;                   % CHANGED: thrust azimuth actually flown (solved in section 4)
 
-%% 2. ROCKET PARAMETERS (Falcon 9 Block 5)
+%% 2. ROCKET PARAMETERS, Falcon 9
 m_pay = 15000;                           % Payload [kg]
 fairing = 1900;                          % Fairing [kg]
 diam_falcon = 3.7;                       % Diameter [m]
@@ -58,6 +58,19 @@ p.h_ref  = 150e3;                        % Altitude the transfer orbit perigee i
 p.Kh     = 0.01;                         % Commanded vertical speed per metre of altitude error [1/s]
 p.Kv     = 0.02;                         % Thrust elevation per m/s vertical-speed error [rad/(m/s)]
 p.th_max = deg2rad(70);                  % Max thrust elevation above local horizontal [rad]
+
+%% 2.5 Satellite and debris parameters 
+
+% Satellite parameters
+% ISP
+% mass
+% Thrust
+
+% Debris parameters
+% Target RAAN
+% Target inclination
+% Target Alt
+% mass
 
 %% 3. INITIAL CONDITIONS (t = 0)
 x0 = p.R_E * cos(Lat) * cos(Long);
@@ -130,23 +143,48 @@ tspan5 = [T4(end), T4(end) + 6000];
 [T5, Y5] = ode45(@(t, Y) coast_dynamics(t, Y, p), tspan5, Y0_5, options_standard);
 
 % ================= PHASE 6: RENDEZOUS ===========================
-
-
+% fprintf('--- PHASE 7: Rendezvous with debris---\n');
+% Y0_6 = Y5(end, :)';
+% options_rendezvous = odeset('RelTol', 1e-6, 'AbsTol', 1e-6, 'Events', @(t, Y) event_rendezvous(t, Y, p));
+% tspan6 = [T5(end), T5(end) + 6000]; % change 60000 so that it has engough
+% time to catch up
+% [T6, Y6] = ode45(@(t, Y) rendezvous_dynamics(t, Y, p), tspan6, Y0_6, options_rendezvous);
 
 % ================= PHASE 5: DEORBIT =============================
-
+% fprintf('--- PHASE 5: De-Orbit ---\n');
+% Y0_7 = Y6(end, :)';
+% tspan7 = [T6(end), T6(end) + 6000]; % Change 6000 to when it is de.orbited
+% [T7, Y7] = ode45(@(t, Y) deorbit_dynamics(t, Y, p), tspan7, Y0_7, options_standard);
 
 %% 6. CALCULATE RESULTS
-T_out = [T1; T2; T3; T4; T5];
-Y_out = [Y1; Y2; Y3; Y4; Y5];
+T_out_1 = [T1; T2; T3; T4; T5]; % Use for falcon 9 plots (Figure 1)
+% T_out_2 = [T6; T7]            % Use for satellite plots (Figure 2)
+% T_out_tot = [T1; T2; T3; T4; T5; T6; T7]; % Use for the 3D plot of the orbits
 
-r_out = Y_out(:, 1:3);
-v_out = Y_out(:, 4:6);
-m_out = Y_out(:, 7);
+Y_out_1 = [Y1; Y2; Y3; Y4; Y5]; % Use for falcon 9 plots (Figure 1)
+% Y_out_2 = [Y6; Y7]            % Use for satellite plots (Figure 2)
+% Y_out_tot = [Y1; Y2; Y3; Y4; Y5; Y6; Y7]; % Use for the 3D plot of the orbits
 
-radii = vecnorm(r_out, 2, 2); 
+
+r_out_1 = Y_out_1(:, 1:3);
+% r_out_2 = Y_out_2(:, 1:3);
+% r_out_tot = Y_out_tot(:, 1:3);
+
+v_out_1 = Y_out_1(:, 4:6);
+% v_out_2 = Y_out_2(:, 4:6);
+% v_out_tot = Y_out_tot(:, 4:6);
+
+m_out_1 = Y_out_1(:, 7);
+% m_out_2 = Y_out_1(:, 7);
+% m_out_tot = Y_out_1(:, 7);
+
+
+radii = vecnorm(r_out_1, 2, 2); 
 altitudes = radii - p.R_E; 
-velocities = vecnorm(v_out, 2, 2);        
+velocities_1 = vecnorm(v_out_1, 2, 2);  
+% velocities_2 = vecnorm(v_out_2, 2, 2);  
+
+
 
 [rp_f, ra_f, inc_f, raan_f, ecc_f] = orbit_summary(Y5(end, 1:3)', Y5(end, 4:6)', p.my);
 
@@ -193,7 +231,7 @@ fprintf('Target Radius: %.2f km\n', p.target_radius / 1000);
 fprintf('Actual Radius: %.2f km\n', radii(end) / 1000);
 fprintf('Perigee radius: %.2f km | Apogee radius: %.2f km | Eccentricity: %.5f\n', rp_f/1000, ra_f/1000, ecc_f);
 fprintf('Inclination: %.3f deg (target %.3f) | RAAN (inertial, at launch epoch): %.3f deg\n', inc_f, inc_target_deg, mod(raan_f + theta_GST_asc_deg, 360));
-fprintf('Final Velocity: %.2f m/s (circular speed at target: %.2f m/s)\n', velocities(end), sqrt(p.my/p.target_radius));
+fprintf('Final Velocity: %.2f m/s (circular speed at target: %.2f m/s)\n', velocities_1(end), sqrt(p.my/p.target_radius));
 fprintf('Final Altitude: %.2f km\n', altitudes(end) / 1000);
 
 %% 8. PLOTTING
@@ -202,28 +240,28 @@ fprintf('Final Altitude: %.2f km\n', altitudes(end) / 1000);
 figure('Name', 'Falcon 9 - Telemetry', 'Position', [100, 100, 1000, 600]);
 
 subplot(2, 2, 1);
-plot(T_out, radii / 1000, 'b', 'LineWidth', 2); hold on;
+plot(T_out_1, radii / 1000, 'b', 'LineWidth', 2); hold on;
 yline(p.target_radius / 1000, 'r--', 'Target Orbit');
 xlabel('Time (s)'); ylabel('Radius (km)'); title('Orbital Radius'); grid on;
 
 subplot(2, 2, 2);
-plot(T_out, velocities / 1000, 'r', 'LineWidth', 2);
+plot(T_out_1, velocities_1 / 1000, 'r', 'LineWidth', 2);
 xlabel('Time (s)'); ylabel('Velocity (km/s)'); title('Absolute Velocity'); grid on;
 
 subplot(2, 2, 3);
-plot(T_out, m_out / 1000, 'k', 'LineWidth', 2);
+plot(T_out_1, m_out_1 / 1000, 'k', 'LineWidth', 2);
 xlabel('Time (s)'); ylabel('Mass (tons)'); title('Mass Depletion'); grid on;
 
 subplot(2, 2, 4);
-start_vec = r_out(1, :)';
-downrange = zeros(length(T_out), 1);
-for k = 1:length(T_out)
-    t_current = T_out(k);
+start_vec = r_out_1(1, :)';
+downrange = zeros(length(T_out_1), 1);
+for k = 1:length(T_out_1)
+    t_current = T_out_1(k);
     theta = p.wE * t_current;
     Rz = [cos(theta),  sin(theta), 0;
          -sin(theta),  cos(theta), 0;
           0,           0,          1];
-    r_ecef = Rz * r_out(k, :)';
+    r_ecef = Rz * r_out_1(k, :)';
     cos_angle = dot(start_vec, r_ecef) / (norm(start_vec) * norm(r_ecef));
     cos_angle = min(1, max(-1, cos_angle));
     downrange(k) = p.R_E * acos(cos_angle);
@@ -232,14 +270,18 @@ plot(downrange / 1000, altitudes / 1000, 'g', 'LineWidth', 2);
 xlabel('Ground Distance (km)'); ylabel('Altitude (km)');
 title('Flight Path Relative to Ground'); grid on;
 
-% --- FIGURE 2: Separate 3D Orbital Plot with Phase Markers ---
+% ----FIGURE 2: Same as figure 1 but with the satelite operations data-----
+
+
+
+% --- FIGURE 3: Separate 3D Orbital Plot with Phase Markers ---
 figure('Name', '3D Orbital Trajectory with Phase Markers', 'Position', [150, 150, 800, 800]);
 
 [X_sph, Y_sph, Z_sph] = sphere(40);
 surf(X_sph * (p.R_E/1000), Y_sph * (p.R_E/1000), Z_sph * (p.R_E/1000), ...
     'EdgeColor', 'none', 'FaceColor', [0.2 0.5 0.8], 'FaceAlpha', 0.6); hold on;
 
-plot3(r_out(:,1)/1000, r_out(:,2)/1000, r_out(:,3)/1000, 'r-', 'LineWidth', 2);
+plot3(r_out_1(:,1)/1000, r_out_1(:,2)/1000, r_out_1(:,3)/1000, 'r-', 'LineWidth', 2);
 
 r_meco   = Y1(end, 1:3) / 1000;
 r_seco1  = Y2(end, 1:3) / 1000;
@@ -259,6 +301,8 @@ title('Falcon 9 - 3D Orbital Trajectory & Phase Markers');
 xlabel('X ECI (km)'); ylabel('Y ECI (km)'); zlabel('Z ECI (km)');
 legend('Earth', 'Orbit', 'MECO', 'SECO-1', 'SECO-2', 'Location', 'best');
 hold off;
+
+% -----------------Figure 3 
 
 %% ==================== DYNAMICS FUNCTIONS ====================
 
@@ -341,11 +385,15 @@ function dY = coast_dynamics(~, Y, p)
 end
 
 % ----------- INSERT RENDEZOUS FUNCTION HERE ----------------
+% function dY = rendezvous_dynamics(~, Y, p)
+
 % Pick one of the debris and target that orbit
 % Might be better to add all the variables outside the function. Look at
 % the other functions to see how I did it wit .p
 
 % ----------- INSERT DECENT FUNCTION HERE -------------------
+% % function dY = deorbit_dynamics(~, Y, p)
+
 % Add the mass of the debris and de-orbit it
 
 
@@ -427,4 +475,6 @@ function [value, isterminal, direction] = event_circularize(~, Y, p)
 end
 
 % ---------INSTERT RENDEZOUS EVENT FUNCTION HERE -------------------
+% function [value, isterminal, direction] = event_rendezvous(~, Y, p)
+
 % Function that stops the ODE solver at rendezvous with the debris
