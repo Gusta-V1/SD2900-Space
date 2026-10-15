@@ -14,15 +14,19 @@ R = 6371.000        # (km)
 J2 = 1082.63*1e-6
 G0 = 9.80665*1e-3   # (km/s^2)
 
+# Universal Constants
+T_CMBR = 2.72548    # CMBR Temperature (K): https://lambda.gsfc.nasa.gov/resources/lambda_graphics/cmb_monopole.html
+R_GAS = 8.314462618 # Universal gas constant (J/(K*mol)): https://physics.nist.gov/cgi-bin/cuu/Value?r
+
 
 # Main options
 OBJECT_DATASET = r"rb-750-1000-debris.json"
 
 # Vehicle properties
 DRV_DMASS = 200             # Dry mass (kg)
-#DRV_GMASS =                # Gross mass (kg)
-DRV_THRUST = 250*1e-3*1e-3  # (kN)
-DRV_ISP = 10000             # (s)
+DRV_THRUST = 250*1e-3*1e-3  # Thrust (kN)
+DRV_ISP = 10000             # Isp (s)
+DRV_T = 273.15 + 20         # Vehicle temperature (K)
 
 # Pre-calculated values
 A_DISPOSAL = R + 500        # Disposal orbit semi-major axis (km) (calculated in MATLAB)
@@ -238,6 +242,76 @@ def dvs_rendezvous(a0: FLOAT, at: FLOAT, e0: FLOAT, et: FLOAT, i0: FLOAT, it: FL
     Returns:
         tuple (FLOAT): Tuple of dvs for the maneuver (dva, dve, dvi, dvraan)
     """
+
+    # Burn plan logic
+    # If final orbit apoapsis lower than current orbit: 
+    # If final orbit inclination lower than current orbit:
+    #   1. Change inclination to match target
+    #   2. Change RAAN to match target (add lead, drift differs until eccentricity and semi major is identical)
+    # If final orbit inclination higher than current orbit:
+    #   1. Change RAAN to match target (add lead, drift differs until inclination, eccentricity and semi major is identical))
+    #   2. Change inclination to match target
+    # 3. Change eccentricity to match target (set argument of periapsis, include lead, drift differs until semi-major is identical)
+    # 4. Change altitude to match semi-major axis and phase (position in orbit relative target).
+    # 
+    # If final orbit apoapsis higher than current orbit:
+    # 1. Change altitude to match semi-major axis and phase (position in orbit relative target).
+    # 2. Change eccentricity to match target (set argument of periapsis, include lead, drift differs until inclination and raan is identical)
+    # If final orbit inclination lower than current orbit:
+    #   3. Change inclination to match target
+    #   4. Change RAAN to match target
+    # If final orbit inclination higher than current orbit:
+    #   3. Change RAAN to match target (add lead, drift differs until inclination is identical)
+    #   4. Change inclination to match target
+
+    if at<a0:
+        if it<i0:
+            dvi = dv_i(i0, it, a0)
+            dvraan = dv_raan(raan0, raant, a0, it)
+        else:
+            dvraan = dv_raan(raan0, raant, a0, i0)
+            dvi = dv_i(i0, it, a0)
+        dve = dv_e(e0, et, a0)
+        dva = dv_a(a0, at)
+    else:
+        dva = dv_a(a0, at)
+        dve = dv_e(e0, et, at)
+        if it<i0:
+            dvi = dv_i(i0, it, at)
+            dvraan = dv_raan(raan0, raant, at, it)
+        else:
+            dvraan = dv_raan(raan0, raant, at, i0)
+            dvi = dv_i(i0, it, at)
+
+    return (dva, dve, dvi, dvraan)
+
+# Delta v requirements of maneuvers
+def dvs_rendezvous_WIP(a0: FLOAT, e0: FLOAT, i0: FLOAT, raan0: FLOAT, aper0: FLOAT, epoch0: datetime, target: Object) -> tuple[FLOAT, FLOAT, FLOAT, FLOAT]:
+    """
+    Returns required maneuver Delta v:s, for a rendezvous from an orbit with inital parameters (a0, e0, i0, raan0, aper0) and insertion time epoch0 to rendezvous with a target.
+
+    Params:
+        a0 (FLOAT): - Initial semi-major axis
+        e0 (FLOAT): - Initial eccentricity
+        i0 (FLOAT): - Initial inclination
+        raan0 (FLOAT): - Initial RAAN
+        aper0 (FLOAT): - Initial Argument of periapsis
+        target (Object): - Target to rendezvous with
+    Returns:
+        tuple (FLOAT): Tuple of dvs for the maneuver (dva, dve, dvi, dvraan)
+    """
+
+    M0 = 0 # Initial mean anomaly TODO: WHAT, HOW TO DO WITH MEAN ANOMALY? - assumes inserted into periapsis, which makes sense
+        # GOAL IS TO HAVE SAME MEAN ANOMALY WHEN MATCHED ORBITS.. calculate n (FLOAT): - Mean motion (rad/s), as it changes with alt change?
+        # THINK THIS OUT IN MAFYNETTI, IS ALSO EASIER TO WRITE IN REPORT THEN
+        # TODO ADD TUPLE (or individually) BURN DELAYS, LOOK INTO WHERE DELAYS ARE REASONABLE (RAAN aper M drift)
+
+    # ALSO SET ARG OF PERIAPSIS EVENTUALLY WHERE EFFICIENT (see mafynetti)
+
+    at = target.a
+    et = target.e
+    it = target.i
+    raant, apert, M = target.at_epoch(epoch0)
 
     # Burn plan logic
     # If final orbit apoapsis lower than current orbit: 

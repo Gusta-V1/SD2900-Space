@@ -137,7 +137,7 @@ if __name__ == '__main__':
     print(f"Minimum Total Delta V (km/s): {clusters[0][1].fun} km/s")
 
 
-    # Save optimal cluster and insertion orbit
+    # Save optimal cluster and insertion orbit # TODO: store burn plan as value in dict JSON 
     data = {
         "cluster": [str(target.norad_id) for target in clusters[0][0]],
         "insertion_orbit": {
