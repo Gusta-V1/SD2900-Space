@@ -3,13 +3,13 @@ import itertools
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 from scipy.optimize import minimize
-from core import FLOAT, NUM_WORKERS, R, A_DISPOSAL, DRV_DMASS, MASS_DICT, Object, load_objects, burn_propellant, dv_a, dvs_rendezvous,dv_aper
+from core import FLOAT, NUM_WORKERS, R, A_DISPOSAL, DRV_DMASS, MASS_DICT, Object, load_objects, burn_propellant, dv_a, dvs_rendezvous
 
 
 
 # Main options
 num_targets = 8         # Number of targets
-suboptimal_targets = 5  # N:th best cluster
+suboptimal_targets = 3  # N:th best cluster
 
 # Launch window
 #TUPLE OF EPOCHS TIMESTAMPS TODO: do
@@ -47,16 +47,12 @@ def cluster_mp_max(x, cluster: tuple[Object]):
     mp=np.empty(len(cluster))
     for j in range(len(cluster)):
         obj = cluster[j]
-        # TODO: Calculate for a given point in time? (add time parameter/constraint?), time in seconds since reference time(stamp) t_ref
+        # TODO: Calculate for a given point in time? (add time parameter/constraint?), 
+        #   time in seconds since reference time(stamp) t_ref
         #   (maybe also add arg of periapsis?)
-        a = obj.a
-        e = obj.e
-        i = obj.i
-        raan = obj.raan
-        aper = obj.aper
 
-        dv_rendezvous = sum(dvs_rendezvous(a0, a, e0, e, i0, i, raan0, raan, aper0, aper))
-        dv_disposal = dv_a(a, A_DISPOSAL)
+        dv_rendezvous = sum(dvs_rendezvous(a0, e0, i0, raan0, aper0, obj))
+        dv_disposal = dv_a(obj.a, A_DISPOSAL)
 
         mp2 = burn_propellant(DRV_DMASS + MASS_DICT[obj.name], dv_disposal)
         mp1 = burn_propellant(DRV_DMASS + mp2, dv_rendezvous)
@@ -131,7 +127,7 @@ if __name__ == '__main__':
 
     print(f"Computations: {len(clusters)}")   
     print(f"Optimal cluster: {clusters[0][0]}")
-    print(f"Optimal Parameters: \n\ta0 = {clusters[0][1].x[0]:.3f} km, \n\te0 = {clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(clusters[0][1].x[2]):.6f} deg, \n\tRAAN0 = {np.rad2deg(clusters[0][1].x[3]):.6f} deg, \n\taper0 = {np.rad2deg(clusters[0][1].x[4]):.6f} deg")
+    print(f"Optimal Parameters: \n\ta0 = {clusters[0][1].x[0]:.3f} km, \n\te0 = {clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(clusters[0][1].x[2]):.4f} deg, \n\tRAAN0 = {np.rad2deg(clusters[0][1].x[3]):.4f} deg, \n\taper0 = {np.rad2deg(clusters[0][1].x[4]):.4f} deg")
     print(f"Minimum Total Propellant: {clusters[0][1].fun} kg")
 
 
@@ -155,5 +151,5 @@ if __name__ == '__main__':
     else:
         print(80*"-")
         print(f"{suboptimal_targets}:th Optimal cluster: {suboptimal_clusters[0][0]}")
-        print(f"{suboptimal_targets}:th Optimal Parameters: \n\ta0 = {suboptimal_clusters[0][1].x[0]:.3f} km, \n\te0 = {suboptimal_clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(suboptimal_clusters[0][1].x[2]):.6f} deg, \n\tRAAN0 = {np.rad2deg(suboptimal_clusters[0][1].x[3]):.6f} deg, \n\taper0 = {np.rad2deg(suboptimal_clusters[0][1].x[4]):.6f} deg")
+        print(f"{suboptimal_targets}:th Optimal Parameters: \n\ta0 = {suboptimal_clusters[0][1].x[0]:.3f} km, \n\te0 = {suboptimal_clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(suboptimal_clusters[0][1].x[2]):.4f} deg, \n\tRAAN0 = {np.rad2deg(suboptimal_clusters[0][1].x[3]):.4f} deg, \n\taper0 = {np.rad2deg(suboptimal_clusters[0][1].x[4]):.4f} deg")
         print(f"{suboptimal_targets}:th Minimum Total Propellant: {suboptimal_clusters[0][1].fun} kg")

@@ -23,7 +23,7 @@ R_GAS = 8.314462618 # Universal gas constant (J/(K*mol)): https://physics.nist.g
 OBJECT_DATASET = r"rb-750-1000-debris.json"
 
 # Vehicle properties
-DRV_DMASS = 150             # Dry mass (kg)
+DRV_DMASS = 152.3           # Dry mass (kg)
 DRV_THRUST = 250*1e-3*1e-3  # Thrust (kN)
 DRV_ISP = 10000             # Isp (s)
 DRV_T = 273.15 + 20         # Vehicle temperature (K)
@@ -127,14 +127,14 @@ class Object:
             f"    epoch={self.epoch!r},\n"
             f"    rev_at_epoch={self.rev_at_epoch},\n"
             f"    a={self.a:.3f} km,\n"
-            f"    n={self.n:.6e} rad/s,\n"
-            f"    nd={self.nd:.6e} rad/s²,\n"
-            f"    ndd={self.ndd:.6e} rad/s³,\n"
+            f"    n={np.rad2deg(self.n):.6e} deg/s,\n"
+            f"    nd={np.rad2deg(self.nd):.6e} deg/s²,\n"
+            f"    ndd={np.rad2deg(self.ndd):.6e} deg/s³,\n"
             f"    e={self.e:.8f},\n"
-            f"    i={self.i:.6f} rad,\n"
-            f"    raan={self.raan:.6f} rad,\n"
-            f"    aper={self.aper:.6f} rad,\n"
-            f"    M={self.M:.6f} rad,\n"
+            f"    i={np.rad2deg(self.i):.4f} deg,\n"
+            f"    raan={np.rad2deg(self.raan):.4f} deg,\n"
+            f"    aper={np.rad2deg(self.aper):.4f} deg,\n"
+            f"    M={np.rad2deg(self.M):.4f} deg,\n"
             f"    Bs={self.Bs:.6e} 1/R\n"
             ")"
         )
@@ -269,24 +269,26 @@ def d_aper(draan: FLOAT, i: FLOAT) -> FLOAT: # Argument of the periapsis
 
 
 # Delta v requirements of maneuvers
-def dvs_rendezvous(a0: FLOAT, at: FLOAT, e0: FLOAT, et: FLOAT, i0: FLOAT, it: FLOAT, raan0: FLOAT, raant: FLOAT, aper0: FLOAT, apert: FLOAT) -> tuple[FLOAT, FLOAT, FLOAT, FLOAT, FLOAT]:
+def dvs_rendezvous(a0: FLOAT, e0: FLOAT, i0: FLOAT, raan0: FLOAT, aper0: FLOAT, target: Object) -> tuple[FLOAT, FLOAT, FLOAT, FLOAT, FLOAT]:
     """
     Returns required maneuver Delta v:s for a rendezvous from an orbit with inital parameters (a0, e0, i0, raan0, aper0) to a target orbit (at, et, it, raant, apert).
 
     Params:
         a0 (FLOAT): - Initial semi-major axis
-        at (FLOAT): - Target semi-major axis
         e0 (FLOAT): - Initial eccentricity
-        et (FLOAT): - Target eccentricity
         i0 (FLOAT): - Initial inclination
-        it (FLOAT): - Target inclination
         raan0 (FLOAT): - Initial RAAN
-        raant (FLOAT): - Target RAAN
         aper0 (FLOAT): - Initial argument of periapsis
-        apert (FLOAT): - Target argument of periapsis
+        target (Object): - Target to rendezvous with
     Returns:
         tuple (FLOAT): Tuple of dvs for the maneuver (dva, dve, dvi, dvraan, dvaper)
     """
+
+    at = target.a
+    et = target.e
+    it = target.i
+    raant = target.raan
+    apert = target.aper
 
     # Burn plan logic
     # If final orbit semi-major axis lower than current orbit: 
@@ -350,6 +352,10 @@ def dvs_rendezvous(a0: FLOAT, at: FLOAT, e0: FLOAT, et: FLOAT, i0: FLOAT, it: FL
 
     return (dva, dve, dvi, dvraan, dvaper)
 
+def raan_lead(t: FLOAT, a0: FLOAT, at: FLOAT, e0: FLOAT, et: FLOAT, i0: FLOAT, it: FLOAT):
+    pass # HAVE TO ADD LEAD FOR EVERY BURN - mass changes for every burn must also be taken into consideration
+    #return t * (d_raan(a: FLOAT, e: FLOAT, i: FLOAT) - d_raan(a: FLOAT, e: FLOAT, i: FLOAT)) # NOTE THAT NOT ALL INPUT PARAMS ARE LINEAR DURING BURNS
+
 # Delta v requirements of maneuvers
 def dvs_rendezvous_WIP(a0: FLOAT, e0: FLOAT, i0: FLOAT, raan0: FLOAT, aper0: FLOAT, epoch0: datetime, target: Object) -> tuple[FLOAT, FLOAT, FLOAT, FLOAT]:
     """
@@ -363,9 +369,11 @@ def dvs_rendezvous_WIP(a0: FLOAT, e0: FLOAT, i0: FLOAT, raan0: FLOAT, aper0: FLO
         aper0 (FLOAT): - Initial Argument of periapsis
         target (Object): - Target to rendezvous with
     Returns:
-        tuple (FLOAT): Tuple of dvs for the maneuver (dva, dve, dvi, dvraan)
+        tuple (FLOAT): Tuple of dvs for the maneuver (dva, dve, dvi, dvraan, dvaper)
     """
 
+    # Set up initial vehicle state
+    #m = DRV_DMASS + UH; HOW
     M0 = 0 # Initial mean anomaly TODO: WHAT, HOW TO DO WITH MEAN ANOMALY? - assumes inserted into periapsis, which makes sense
         # GOAL IS TO HAVE SAME MEAN ANOMALY WHEN MATCHED ORBITS.. calculate n (FLOAT): - Mean motion (rad/s), as it changes with alt change?
         # THINK THIS OUT IN MAFYNETTI, IS ALSO EASIER TO WRITE IN REPORT THEN
@@ -374,44 +382,66 @@ def dvs_rendezvous_WIP(a0: FLOAT, e0: FLOAT, i0: FLOAT, raan0: FLOAT, aper0: FLO
 
     # ALSO SET ARG OF PERIAPSIS EVENTUALLY WHERE EFFICIENT (see mafynetti)
 
+    # Initial target state
     at = target.a
     et = target.e
     it = target.i
-    raant, apert, M = target.at_epoch(epoch0)
+    raant, apert, Mt = target.at_epoch(epoch0)
 
     # Burn plan logic
-    # If final orbit apoapsis lower than current orbit: 
-    # If final orbit inclination lower than current orbit:
-    #   1. Change inclination to match target
-    #   2. Change RAAN to match target (add lead, drift differs until eccentricity and semi major is identical)
-    # If final orbit inclination higher than current orbit:
-    #   1. Change RAAN to match target (add lead, drift differs until inclination, eccentricity and semi major is identical))
-    #   2. Change inclination to match target
-    # 3. Change eccentricity to match target (set argument of periapsis, include lead, drift differs until semi-major is identical)
-    # 4. Change altitude to match semi-major axis and phase (position in orbit relative target).
+    # If final orbit semi-major axis lower than current orbit: 
+    #   If final orbit inclination lower than current orbit:
+    #     1. Change inclination to match target
+    #     2. Change RAAN to match target (add lead, drift differs until eccentricity and semi major is identical)
+    #   If final orbit inclination higher than current orbit:
+    #     1. Change RAAN to match target (add lead, drift differs until inclination, eccentricity and semi major is identical))
+    #     2. Change inclination to match target
+    #   If final orbit eccentricity lower than final orbit:
+    #     3. Change eccentricity to match target
+    #     4. Change argument of periapsis to match target (include lead, drift differs until semi-major is identical)
+    #   If final orbit eccentricity higher than final orbit:
+    #     3. Change argument of periapsis to match target (include lead, drift differs until eccentricity and semi-major is identical)
+    #     4. Change eccentricity to match target
+    #   5. Change altitude to match semi-major axis and phase (position in orbit relative target).
     # 
-    # If final orbit apoapsis higher than current orbit:
-    # 1. Change altitude to match semi-major axis and phase (position in orbit relative target).
-    # 2. Change eccentricity to match target (set argument of periapsis, include lead, drift differs until inclination and raan is identical)
-    # If final orbit inclination lower than current orbit:
-    #   3. Change inclination to match target
-    #   4. Change RAAN to match target
-    # If final orbit inclination higher than current orbit:
-    #   3. Change RAAN to match target (add lead, drift differs until inclination is identical)
-    #   4. Change inclination to match target
+    # If final orbit semi-major axis higher than current orbit:
+    #   1. Change altitude to match semi-major axis and phase (position in orbit relative target).
+    #   # If final orbit eccentricity lower than final orbit:
+    #     2. Change eccentricity to match target
+    #     3. Change argument of periapsis to match target (include lead, drift differs until inclination and raan is identical)
+    #   If final orbit eccentricity higher than final orbit:
+    #     2. Change argument of periapsis to match target (include lead, drift differs until eccentricity, inclination and raan is identical)
+    #     3. Change eccentricity to match target
+    #   If final orbit inclination lower than current orbit:
+    #     4. Change inclination to match target
+    #     5. Change RAAN to match target
+    #   If final orbit inclination higher than current orbit:
+    #     4. Change RAAN to match target (add lead, drift differs until inclination is identical)
+    #     5. Change inclination to match target
 
+    dt_burn=0 # Elapsed time due to burning
     if at<a0:
         if it<i0:
             dvi = dv_i(i0, it, a0)
-            dvraan = dv_raan(raan0, raant, a0, it)
+            dvraan = dv_raan(raan0, raant, a0, it)# Calc delta raan
         else:
             dvraan = dv_raan(raan0, raant, a0, i0)
             dvi = dv_i(i0, it, a0)
-        dve = dv_e(e0, et, a0)
+        if et<e0:
+            dve = dv_e(e0, et, a0)
+            dvaper = dv_aper(aper0, apert, a0, et)
+        else:
+            dvaper = dv_aper(aper0, apert, a0, e0)
+            dve = dv_e(e0, et, a0)
         dva = dv_a(a0, at)
     else:
         dva = dv_a(a0, at)
-        dve = dv_e(e0, et, at)
+        if et<e0:
+            dve = dv_e(e0, et, at)
+            dvaper = dv_aper(aper0, apert, at, et)
+        else:
+            dvaper = dv_aper(aper0, apert, at, e0)
+            dve = dv_e(e0, et, at)
         if it<i0:
             dvi = dv_i(i0, it, at)
             dvraan = dv_raan(raan0, raant, at, it)
@@ -419,4 +449,4 @@ def dvs_rendezvous_WIP(a0: FLOAT, e0: FLOAT, i0: FLOAT, raan0: FLOAT, aper0: FLO
             dvraan = dv_raan(raan0, raant, at, i0)
             dvi = dv_i(i0, it, at)
 
-    return (dva, dve, dvi, dvraan)
+    return (dva, dve, dvi, dvraan, dvaper)

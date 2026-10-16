@@ -91,15 +91,9 @@ mp_tot_dict={}
 ms_dict={}
 m_tot_dict={}
 for obj in cluster:
-    a = obj.a
-    e = obj.e
-    i = obj.i
-    raan = obj.raan
-    aper = obj.aper
-
     # Power requirements
-    P_Solar = req_power_generation(P_req, a)
-    Q_Battery = req_battery_capacity(P_req, a)
+    P_Solar = req_power_generation(P_req, obj.a)
+    Q_Battery = req_battery_capacity(P_req, obj.a)
 
     # Power and thermal systems mass
     #m_Radiator = radiator_mass(P_req) #TODO: CALCULATE THERMALS IF TIME
@@ -119,8 +113,8 @@ for obj in cluster:
 
     # Iteratively update fuel requirement estimate
     for j in range(estimation_iterations):
-        dv_rendezvous = sum(dvs_rendezvous(a0, a, e0, e, i0, i, raan0, raan, aper0, aper))
-        dv_disposal = dv_a(a, A_DISPOSAL)
+        dv_rendezvous = sum(dvs_rendezvous(a0, e0, i0, raan0, aper0, obj))
+        dv_disposal = dv_a(obj.a, A_DISPOSAL)
 
 
         # Calculate required propellant masses
