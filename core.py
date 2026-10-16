@@ -23,13 +23,13 @@ R_GAS = 8.314462618 # Universal gas constant (J/(K*mol)): https://physics.nist.g
 OBJECT_DATASET = r"rb-750-1000-debris.json"
 
 # Vehicle properties
-DRV_DMASS = 200             # Dry mass (kg)
+DRV_DMASS = 150             # Dry mass (kg)
 DRV_THRUST = 250*1e-3*1e-3  # Thrust (kN)
 DRV_ISP = 10000             # Isp (s)
 DRV_T = 273.15 + 20         # Vehicle temperature (K)
 
 # Pre-calculated values
-A_DISPOSAL = R + 500        # Disposal orbit semi-major axis (km) (calculated in MATLAB)
+A_DISPOSAL = R + 500        # Disposal orbit semi-major axis (km): calculated in MATLAB
 
 # Debris mass dictionary (kg)
 MASS_DICT = {
@@ -38,7 +38,7 @@ MASS_DICT = {
 
 
 
-# Utilities
+# Object class
 # {"OBJECT_NAME":"COSMOS 2251",
 # "OBJECT_ID":"1993-036A",
 # "EPOCH":"2026-09-10T06:23:36.172896", # Timestamp of data
@@ -125,7 +125,7 @@ class Object:
         TAU = 2*np.pi
 
         # Calculate parameters
-        # NOTE: n, nd are not updated as they are tuned to fit SGP4
+        #   NOTE: n, nd are not updated as they are tuned to fit SGP4
         draan = d_raan(self.a, self.e, self.i)
         daper = d_aper(draan, self.i)
 
@@ -134,8 +134,9 @@ class Object:
         m = (self.M + self.n*elapsed) % TAU
 
         return (raan, aper, m)
-    
 
+
+# Utilities
 def mean_motion_to_a(n: FLOAT) -> tuple[FLOAT, FLOAT]:
     """
     Calculate semi-major axis (km) from mean motion (rad/s).
@@ -148,7 +149,7 @@ def burn_time(dv: FLOAT, m: FLOAT):
 
     Params:
         dv (FLOAT): - Desired change in velocity (km/s)
-        m (FLOAT): - Propelled mass (kg)
+        m (FLOAT): - Mean propelled mass (kg)
     """
     return dv * m / DRV_THRUST
 
@@ -157,8 +158,8 @@ def TLE_mean_motion_to_si(n_ra: FLOAT, nd_ra: FLOAT, ndd_ra: FLOAT) -> tuple[FLO
     Converts TLE mean motion and its time derivatives from rotations per day radians per second.
     """
     n = n_ra * 2*np.pi / 86400
-    nd = 2* nd_ra * 2*np.pi / 86400**2 # Multiplied by 2 to counteract TLE scaling
-    ndd = 6 * ndd_ra * 2*np.pi / 86400**3 # Multiplied by 6 to counteract TLE scaling
+    nd = 2* nd_ra * 2*np.pi / 86400**2      # Multiplied by 2 to counteract TLE scaling
+    ndd = 6 * ndd_ra * 2*np.pi / 86400**3   # Multiplied by 6 to counteract TLE scaling
     return (n, nd, ndd)
 
 def read_tle(entry):
@@ -187,7 +188,7 @@ def read_tle(entry):
     )
     return target
 
-def load_objects(a_min: FLOAT=0) -> dict[str, Object]:
+def load_objects(a_min: FLOAT=R) -> dict[str, Object]:
     objects=dict()
     with open(OBJECT_DATASET) as f:
         data = json.load(f)
@@ -200,8 +201,12 @@ def load_objects(a_min: FLOAT=0) -> dict[str, Object]:
 
     return objects
 
+def wrap_angle_delta(delta: FLOAT):
+    """Calculate the wrapped angle difference (-pi, pi) for a given delta."""
+    return np.arctan2(np.sin(delta), np.cos(delta))
 
-# Delta v (not including drifts at the moment, quasi-circular)
+
+# Delta v for parameter changes (quasi-circular)
 def dv_a(a0: FLOAT, at: FLOAT) -> FLOAT:
     return np.abs(np.sqrt(MU/a0) - np.sqrt(MU/at))
 
@@ -213,7 +218,10 @@ def dv_i(i0: FLOAT, it: FLOAT, a: FLOAT) -> FLOAT:
     return v * np.sqrt(2 - 2*np.cos((np.pi*(it - i0))/2))
 
 def dv_raan(raan0: FLOAT, raant: FLOAT, a: FLOAT, i: FLOAT) -> FLOAT:
-    return np.pi/2 * np.sqrt(MU/a) * np.abs(raant - raan0) * np.sin(i)
+    return np.pi/2 * np.sqrt(MU/a) * np.abs(wrap_angle_delta(raant - raan0)) * np.sin(i)
+
+def dv_aper(aper0: FLOAT, apert: FLOAT, a: FLOAT, e: FLOAT) -> FLOAT:
+    return np.sqrt(MU/a) * 2/3 * e/np.sqrt(1 - e) * np.abs(wrap_angle_delta(apert - aper0))
 
 
 # Oblateness effects
@@ -226,9 +234,9 @@ def d_aper(draan: FLOAT, i: FLOAT) -> FLOAT: # Argument of the periapsis
 
 
 # Delta v requirements of maneuvers
-def dvs_rendezvous(a0: FLOAT, at: FLOAT, e0: FLOAT, et: FLOAT, i0: FLOAT, it: FLOAT, raan0: FLOAT, raant: FLOAT) -> tuple[FLOAT, FLOAT, FLOAT, FLOAT]:
+def dvs_rendezvous(a0: FLOAT, at: FLOAT, e0: FLOAT, et: FLOAT, i0: FLOAT, it: FLOAT, raan0: FLOAT, raant: FLOAT, aper0: FLOAT, apert: FLOAT) -> tuple[FLOAT, FLOAT, FLOAT, FLOAT, FLOAT]:
     """
-    Returns required maneuver Delta v:s, for a rendezvous from an orbit with inital parameters (a0, e0, i0, raan0) to a target orbit (at, et, it, raant).
+    Returns required maneuver Delta v:s for a rendezvous from an orbit with inital parameters (a0, e0, i0, raan0, aper0) to a target orbit (at, et, it, raant, apert).
 
     Params:
         a0 (FLOAT): - Initial semi-major axis
@@ -239,30 +247,42 @@ def dvs_rendezvous(a0: FLOAT, at: FLOAT, e0: FLOAT, et: FLOAT, i0: FLOAT, it: FL
         it (FLOAT): - Target inclination
         raan0 (FLOAT): - Initial RAAN
         raant (FLOAT): - Target RAAN
+        aper0 (FLOAT): - Initial argument of periapsis
+        apert (FLOAT): - Target argument of periapsis
     Returns:
-        tuple (FLOAT): Tuple of dvs for the maneuver (dva, dve, dvi, dvraan)
+        tuple (FLOAT): Tuple of dvs for the maneuver (dva, dve, dvi, dvraan, dvaper)
     """
 
     # Burn plan logic
-    # If final orbit apoapsis lower than current orbit: 
-    # If final orbit inclination lower than current orbit:
-    #   1. Change inclination to match target
-    #   2. Change RAAN to match target (add lead, drift differs until eccentricity and semi major is identical)
-    # If final orbit inclination higher than current orbit:
-    #   1. Change RAAN to match target (add lead, drift differs until inclination, eccentricity and semi major is identical))
-    #   2. Change inclination to match target
-    # 3. Change eccentricity to match target (set argument of periapsis, include lead, drift differs until semi-major is identical)
-    # 4. Change altitude to match semi-major axis and phase (position in orbit relative target).
+    # If final orbit semi-major axis lower than current orbit: 
+    #   If final orbit inclination lower than current orbit:
+    #     1. Change inclination to match target
+    #     2. Change RAAN to match target (add lead, drift differs until eccentricity and semi major is identical)
+    #   If final orbit inclination higher than current orbit:
+    #     1. Change RAAN to match target (add lead, drift differs until inclination, eccentricity and semi major is identical))
+    #     2. Change inclination to match target
+    #   If final orbit eccentricity lower than final orbit:
+    #     3. Change eccentricity to match target
+    #     4. Change argument of periapsis to match target (include lead, drift differs until semi-major is identical)
+    #   If final orbit eccentricity higher than final orbit:
+    #     3. Change argument of periapsis to match target (include lead, drift differs until eccentricity and semi-major is identical)
+    #     4. Change eccentricity to match target
+    #   5. Change altitude to match semi-major axis and phase (position in orbit relative target).
     # 
-    # If final orbit apoapsis higher than current orbit:
-    # 1. Change altitude to match semi-major axis and phase (position in orbit relative target).
-    # 2. Change eccentricity to match target (set argument of periapsis, include lead, drift differs until inclination and raan is identical)
-    # If final orbit inclination lower than current orbit:
-    #   3. Change inclination to match target
-    #   4. Change RAAN to match target
-    # If final orbit inclination higher than current orbit:
-    #   3. Change RAAN to match target (add lead, drift differs until inclination is identical)
-    #   4. Change inclination to match target
+    # If final orbit semi-major axis higher than current orbit:
+    #   1. Change altitude to match semi-major axis and phase (position in orbit relative target).
+    #   # If final orbit eccentricity lower than final orbit:
+    #     2. Change eccentricity to match target
+    #     3. Change argument of periapsis to match target (include lead, drift differs until inclination and raan is identical)
+    #   If final orbit eccentricity higher than final orbit:
+    #     2. Change argument of periapsis to match target (include lead, drift differs until eccentricity, inclination and raan is identical)
+    #     3. Change eccentricity to match target
+    #   If final orbit inclination lower than current orbit:
+    #     4. Change inclination to match target
+    #     5. Change RAAN to match target
+    #   If final orbit inclination higher than current orbit:
+    #     4. Change RAAN to match target (add lead, drift differs until inclination is identical)
+    #     5. Change inclination to match target
 
     if at<a0:
         if it<i0:
@@ -271,11 +291,21 @@ def dvs_rendezvous(a0: FLOAT, at: FLOAT, e0: FLOAT, et: FLOAT, i0: FLOAT, it: FL
         else:
             dvraan = dv_raan(raan0, raant, a0, i0)
             dvi = dv_i(i0, it, a0)
-        dve = dv_e(e0, et, a0)
+        if et<e0:
+            dve = dv_e(e0, et, a0)
+            dvaper = dv_aper(aper0, apert, a0, et)
+        else:
+            dvaper = dv_aper(aper0, apert, a0, e0)
+            dve = dv_e(e0, et, a0)
         dva = dv_a(a0, at)
     else:
         dva = dv_a(a0, at)
-        dve = dv_e(e0, et, at)
+        if et<e0:
+            dve = dv_e(e0, et, at)
+            dvaper = dv_aper(aper0, apert, at, et)
+        else:
+            dvaper = dv_aper(aper0, apert, at, e0)
+            dve = dv_e(e0, et, at)
         if it<i0:
             dvi = dv_i(i0, it, at)
             dvraan = dv_raan(raan0, raant, at, it)
@@ -283,7 +313,7 @@ def dvs_rendezvous(a0: FLOAT, at: FLOAT, e0: FLOAT, et: FLOAT, i0: FLOAT, it: FL
             dvraan = dv_raan(raan0, raant, at, i0)
             dvi = dv_i(i0, it, at)
 
-    return (dva, dve, dvi, dvraan)
+    return (dva, dve, dvi, dvraan, dvaper)
 
 # Delta v requirements of maneuvers
 def dvs_rendezvous_WIP(a0: FLOAT, e0: FLOAT, i0: FLOAT, raan0: FLOAT, aper0: FLOAT, epoch0: datetime, target: Object) -> tuple[FLOAT, FLOAT, FLOAT, FLOAT]:
@@ -305,6 +335,7 @@ def dvs_rendezvous_WIP(a0: FLOAT, e0: FLOAT, i0: FLOAT, raan0: FLOAT, aper0: FLO
         # GOAL IS TO HAVE SAME MEAN ANOMALY WHEN MATCHED ORBITS.. calculate n (FLOAT): - Mean motion (rad/s), as it changes with alt change?
         # THINK THIS OUT IN MAFYNETTI, IS ALSO EASIER TO WRITE IN REPORT THEN
         # TODO ADD TUPLE (or individually) BURN DELAYS, LOOK INTO WHERE DELAYS ARE REASONABLE (RAAN aper M drift)
+        # During burns, integrate from one to the other (for linear function just halfway)
 
     # ALSO SET ARG OF PERIAPSIS EVENTUALLY WHERE EFFICIENT (see mafynetti)
 

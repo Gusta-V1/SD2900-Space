@@ -41,7 +41,7 @@ def cluster_dv_max(x, cluster: tuple[Object]):
         x (np.ndarray([a, e, i, raan])): - Initial orbit parameters
         cluster (tuple[Object]): - List of targets
     """
-    a0, e0, i0, raan0 = x
+    a0, e0, i0, raan0, aper0 = x
 
     dvtot=np.empty(len(cluster))
     for j in range(len(cluster)):
@@ -52,11 +52,12 @@ def cluster_dv_max(x, cluster: tuple[Object]):
         e = obj.e
         i = obj.i
         raan = obj.raan
+        aper = obj.aper
 
         # NOTE: Better solution would be to:
         #   Minimize the maximum fuel fuel required for a DRV to complete its mission.
 
-        dv_rendezvous = sum(dvs_rendezvous(a0, a, e0, e, i0, i, raan0, raan))
+        dv_rendezvous = sum(dvs_rendezvous(a0, a, e0, e, i0, i, raan0, raan, aper0, aper))
         #dv_disposal = dv_a(a, A_DISPOSAL)
 
         #TODO: SHOULD THE PROP MASS CALCULATION BE MOVED INTO CORE? IT WILL BE USED IN ALL THREE FILES
@@ -87,13 +88,15 @@ def _process_clusters(base_key):
         e0 = np.mean([t.e for t in candidates])
         i0 = np.mean([t.i for t in candidates])
         raan0 = np.mean([t.raan for t in candidates])
-        x0 = np.array([a0, e0, i0, raan0], dtype=FLOAT)
+        aper0 = np.mean([t.aper for t in candidates])
+        x0 = np.array([a0, e0, i0, raan0, aper0], dtype=FLOAT)
 
         bounds=[
             (R, None),          # Semi-major axis
             (0, 1),             # Eccentricity
             (i0_min, np.pi/2),  # Inclination
-            (0, 2*np.pi)        # RAAN
+            (0, 2*np.pi),       # RAAN
+            (0, 2*np.pi)        # Argument of periapsis
         ]
         result = minimize(cluster_dv_max, x0, args=(candidates,), method='SLSQP', bounds=bounds)
 
@@ -108,8 +111,7 @@ num_objects = len(targets)
 
 
 # Main program
-#   TODO: SHOULD ARG OF PERIAPSIS BE CONSIDERED???
-#   Note: That leads require thrust and weight data
+#   NOTE: That leads require thrust and weight data
 #   TODO: Take orbital precession into consideration, 
 #     (also create other function to build burn plan)
 #     Add time dependency?
@@ -133,7 +135,7 @@ if __name__ == '__main__':
 
     print(f"Computations: {len(clusters)}")   
     print(f"Optimal cluster: {clusters[0][0]}")
-    print(f"Optimal Parameters: \n\ta0 = {clusters[0][1].x[0]:.3f} km, \n\te0 = {clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(clusters[0][1].x[2]):.6f} deg, \n\tRAAN0 = {np.rad2deg(clusters[0][1].x[3]):.6f} deg")
+    print(f"Optimal Parameters: \n\ta0 = {clusters[0][1].x[0]:.3f} km, \n\te0 = {clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(clusters[0][1].x[2]):.6f} deg, \n\tRAAN0 = {np.rad2deg(clusters[0][1].x[3]):.6f} deg, \n\taper0 = {np.rad2deg(clusters[0][1].x[4]):.6f} deg")
     print(f"Minimum Total Delta V (km/s): {clusters[0][1].fun} km/s")
 
 
@@ -145,6 +147,7 @@ if __name__ == '__main__':
             "e": clusters[0][1].x[1],
             "i": clusters[0][1].x[2],
             "raan": clusters[0][1].x[3],
+            "aper": clusters[0][1].x[4]
         },
     }
     with open("cluster-solution.json", "w", encoding="utf-8") as f:
@@ -156,5 +159,5 @@ if __name__ == '__main__':
     else:
         print(80*"-")
         print(f"{suboptimal_targets}:th Optimal cluster: {suboptimal_clusters[0][0]}")
-        print(f"{suboptimal_targets}:th Optimal Parameters: \n\ta0 = {suboptimal_clusters[0][1].x[0]:.3f} km, \n\te0 = {suboptimal_clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(suboptimal_clusters[0][1].x[2]):.6f} deg, \n\tRAAN0 = {np.rad2deg(suboptimal_clusters[0][1].x[3]):.6f} deg")
+        print(f"{suboptimal_targets}:th Optimal Parameters: \n\ta0 = {suboptimal_clusters[0][1].x[0]:.3f} km, \n\te0 = {suboptimal_clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(suboptimal_clusters[0][1].x[2]):.6f} deg, \n\tRAAN0 = {np.rad2deg(suboptimal_clusters[0][1].x[3]):.6f} deg, \n\taper0 = {np.rad2deg(suboptimal_clusters[0][1].x[4]):.6f} deg")
         print(f"{suboptimal_targets}:th Minimum Total Delta V (km/s): {suboptimal_clusters[0][1].fun} km/s")
