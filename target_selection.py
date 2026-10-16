@@ -3,13 +3,13 @@ import itertools
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 from scipy.optimize import minimize
-from core import FLOAT, NUM_WORKERS, R, G0, A_DISPOSAL, DRV_DMASS, MASS_DICT, DRV_ISP, Object, load_objects, dv_a, dvs_rendezvous
+from core import FLOAT, NUM_WORKERS, R, A_DISPOSAL, DRV_DMASS, MASS_DICT, Object, load_objects, burn_propellant, dv_a, dvs_rendezvous,dv_aper
 
 
 
 # Main options
 num_targets = 8         # Number of targets
-suboptimal_targets = 3  # N:th best cluster
+suboptimal_targets = 5  # N:th best cluster
 
 # Launch window
 #TUPLE OF EPOCHS TIMESTAMPS TODO: do
@@ -24,6 +24,7 @@ inclination_limit = np.deg2rad(5.0) # (deg) (about 3.4 km/s)
 raan_limit = np.deg2rad(5.0)        # (deg) (about 3.53 km/s, orbital precession only 0.45 deg per month)
 a_limit = 200                       # (km) (about 3.45 km/s when raising)
 
+
 # Utilities
 def filter_candidate(target: Object, base: Object, a_lim: float, i_lim: float, raan_lim: float):
     Da = np.abs(target.a - base.a)
@@ -32,10 +33,10 @@ def filter_candidate(target: Object, base: Object, a_lim: float, i_lim: float, r
     return Da < a_lim and Di < i_lim and Draan < raan_lim
 
 
-# Calculate maximum delta-v required for cluster
-def cluster_dv_max(x, cluster: tuple[Object]):
+# Calculate maximum propellant mass required for cluster
+def cluster_mp_max(x, cluster: tuple[Object]):
     """
-    Function to calculate maximum delta-v required for a cluster from given initial parameters.
+    Function to calculate maximum propellant mass required for a cluster from given initial parameters.
 
     Params:
         x (np.ndarray([a, e, i, raan])): - Initial orbit parameters
@@ -43,7 +44,7 @@ def cluster_dv_max(x, cluster: tuple[Object]):
     """
     a0, e0, i0, raan0, aper0 = x
 
-    dvtot=np.empty(len(cluster))
+    mp=np.empty(len(cluster))
     for j in range(len(cluster)):
         obj = cluster[j]
         # TODO: Calculate for a given point in time? (add time parameter/constraint?), time in seconds since reference time(stamp) t_ref
@@ -54,21 +55,15 @@ def cluster_dv_max(x, cluster: tuple[Object]):
         raan = obj.raan
         aper = obj.aper
 
-        # NOTE: Better solution would be to:
-        #   Minimize the maximum fuel fuel required for a DRV to complete its mission.
-
         dv_rendezvous = sum(dvs_rendezvous(a0, a, e0, e, i0, i, raan0, raan, aper0, aper))
-        #dv_disposal = dv_a(a, A_DISPOSAL)
+        dv_disposal = dv_a(a, A_DISPOSAL)
 
-        #TODO: SHOULD THE PROP MASS CALCULATION BE MOVED INTO CORE? IT WILL BE USED IN ALL THREE FILES
-        #  SHOULD PROBABLY BE SPLIT INTO A FUNCTION THAT TAKES PAYLOAD AND DV, 
-        #  CAN THUS BE REUSED TO GET ACCURATE TIMES FOR BURN PLANNING
-        #mp2 = (DRV_DMASS + MASS_DICT[obj.name])*(np.exp(dv_disposal/(DRV_ISP*G0)) - 1)
-        #mp1 = (DRV_DMASS + mp2)*(np.exp(dv_rendezvous/(DRV_ISP*G0)) - 1)
+        mp2 = burn_propellant(DRV_DMASS + MASS_DICT[obj.name], dv_disposal)
+        mp1 = burn_propellant(DRV_DMASS + mp2, dv_rendezvous)
 
-        dvtot[j] = dv_rendezvous
+        mp[j] = mp1 + mp2
 
-    return np.max(dvtot)
+    return np.max(mp)
 
 # Process cluster
 def _process_clusters(base_key):
@@ -84,11 +79,11 @@ def _process_clusters(base_key):
     cluster_list = [[base] + list(s) for s in itertools.combinations(candidates, num_targets-1)]
     for cluster in cluster_list:
         #Initial params
-        a0 = np.mean([t.a for t in candidates])
-        e0 = np.mean([t.e for t in candidates])
-        i0 = np.mean([t.i for t in candidates])
-        raan0 = np.mean([t.raan for t in candidates])
-        aper0 = np.mean([t.aper for t in candidates])
+        a0 = np.mean([t.a for t in cluster])
+        e0 = np.mean([t.e for t in cluster])
+        i0 = np.mean([t.i for t in cluster])
+        raan0 = np.mean([t.raan for t in cluster])
+        aper0 = np.mean([t.aper for t in cluster])
         x0 = np.array([a0, e0, i0, raan0, aper0], dtype=FLOAT)
 
         bounds=[
@@ -98,7 +93,7 @@ def _process_clusters(base_key):
             (0, 2*np.pi),       # RAAN
             (0, 2*np.pi)        # Argument of periapsis
         ]
-        result = minimize(cluster_dv_max, x0, args=(candidates,), method='SLSQP', bounds=bounds)
+        result = minimize(cluster_mp_max, x0, args=(cluster,), method='SLSQP', bounds=bounds)
 
         local_clusters.append((cluster, result))
 
@@ -126,6 +121,7 @@ if __name__ == '__main__':
     # Sort results
     clusters = sorted(clusters, key=lambda c: c[1].fun)
 
+
     # Remove objects from n best cluster iterations
     suboptimal_clusters = list(clusters)
     for i in range(suboptimal_targets):
@@ -136,10 +132,10 @@ if __name__ == '__main__':
     print(f"Computations: {len(clusters)}")   
     print(f"Optimal cluster: {clusters[0][0]}")
     print(f"Optimal Parameters: \n\ta0 = {clusters[0][1].x[0]:.3f} km, \n\te0 = {clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(clusters[0][1].x[2]):.6f} deg, \n\tRAAN0 = {np.rad2deg(clusters[0][1].x[3]):.6f} deg, \n\taper0 = {np.rad2deg(clusters[0][1].x[4]):.6f} deg")
-    print(f"Minimum Total Delta V (km/s): {clusters[0][1].fun} km/s")
+    print(f"Minimum Total Propellant: {clusters[0][1].fun} kg")
 
 
-    # Save optimal cluster and insertion orbit # TODO: store burn plan as value in dict JSON 
+    # Save optimal cluster and insertion orbit # TODO: store burn plan waits as value in dict JSON 
     data = {
         "cluster": [str(target.norad_id) for target in clusters[0][0]],
         "insertion_orbit": {
@@ -160,4 +156,4 @@ if __name__ == '__main__':
         print(80*"-")
         print(f"{suboptimal_targets}:th Optimal cluster: {suboptimal_clusters[0][0]}")
         print(f"{suboptimal_targets}:th Optimal Parameters: \n\ta0 = {suboptimal_clusters[0][1].x[0]:.3f} km, \n\te0 = {suboptimal_clusters[0][1].x[1]:.8f}, \n\ti0 = {np.rad2deg(suboptimal_clusters[0][1].x[2]):.6f} deg, \n\tRAAN0 = {np.rad2deg(suboptimal_clusters[0][1].x[3]):.6f} deg, \n\taper0 = {np.rad2deg(suboptimal_clusters[0][1].x[4]):.6f} deg")
-        print(f"{suboptimal_targets}:th Minimum Total Delta V (km/s): {suboptimal_clusters[0][1].fun} km/s")
+        print(f"{suboptimal_targets}:th Minimum Total Propellant: {suboptimal_clusters[0][1].fun} kg")

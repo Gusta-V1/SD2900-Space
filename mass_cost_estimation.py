@@ -1,6 +1,6 @@
 import json
 import numpy as np
-from core import FLOAT, MU, R, G0, R_GAS, A_DISPOSAL, DRV_ISP, DRV_T, MASS_DICT, load_objects, dv_a, dvs_rendezvous
+from core import FLOAT, MU, R, R_GAS, A_DISPOSAL, DRV_T, MASS_DICT, load_objects, burn_propellant, dv_a, dvs_rendezvous
 
 
 # Main options
@@ -102,7 +102,7 @@ for obj in cluster:
     Q_Battery = req_battery_capacity(P_req, a)
 
     # Power and thermal systems mass
-    #m_Radiator = radiator_mass(P_req) #TODO: CALCULATE THERMALS
+    #m_Radiator = radiator_mass(P_req) #TODO: CALCULATE THERMALS IF TIME
     m_Solar = P_Solar / p_sp
     m_Battery = Q_Battery / q_sp
 
@@ -120,14 +120,14 @@ for obj in cluster:
     # Iteratively update fuel requirement estimate
     for j in range(estimation_iterations):
         dv_rendezvous = sum(dvs_rendezvous(a0, a, e0, e, i0, i, raan0, raan, aper0, aper))
-        dv_disposal = dv_a(obj.a, A_DISPOSAL)
+        dv_disposal = dv_a(a, A_DISPOSAL)
 
 
         # Calculate required propellant masses
         # mp1: Rendevous
         # mp2: Disposal
-        mp2 = (ms + m_Margin + MASS_DICT[obj.name])*(np.exp(dv_disposal/(DRV_ISP*G0)) - 1)
-        mp1 = (ms + m_Margin + mp2)*(np.exp(dv_rendezvous/(DRV_ISP*G0)) - 1)
+        mp2 = burn_propellant(ms + m_Margin + MASS_DICT[obj.name], dv_disposal)
+        mp1 = burn_propellant(ms + m_Margin + mp2, dv_rendezvous)
 
         mp_tot = mp1 + mp2
 

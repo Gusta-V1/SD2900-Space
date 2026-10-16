@@ -33,7 +33,31 @@ A_DISPOSAL = R + 500        # Disposal orbit semi-major axis (km): calculated in
 
 # Debris mass dictionary (kg)
 MASS_DICT = {
-    "SL-8 R/B": 1435
+    "SL-8 R/B": 1435,
+    "CZ-6A R/B": 1000000,  # Placeholder to prevent selection
+    "SL-14 R/B": 1000000,  # Placeholder to prevent selection
+    "SL-3 R/B": 1000000,  # Placeholder to prevent selection
+    "OV1-21 R/B": 1000000,  # Placeholder to prevent selection
+    "THOR ABLESTAR R/B": 1000000,  # Placeholder to prevent selection
+    "THOR AGENA B R/B": 1000000,  # Placeholder to prevent selection
+    "THOR AGENA D R/B": 1000000,  # Placeholder to prevent selection
+    "SCOUT X-4 R/B": 1000000,  # Placeholder to prevent selection
+    "SCOUT A R/B": 1000000,  # Placeholder to prevent selection
+    "OV1-5 R/B": 1000000,  # Placeholder to prevent selection
+    "OV1-4 R/B": 1000000,  # Placeholder to prevent selection
+    "ATLAS D R/B": 1000000,  # Placeholder to prevent selection
+    "THOR BURNER 2 R/B": 1000000,  # Placeholder to prevent selection
+    "THORAD AGENA D R/B": 1000000,  # Placeholder to prevent selection
+    "M-4S R/B": 1000000,  # Placeholder to prevent selection
+    "SCOUT A-1 R/B": 1000000,  # Placeholder to prevent selection
+    "THOR BURNER 2A R/B": 1000000,  # Placeholder to prevent selection
+    "DIAMANT B-P4 R/B": 1000000,  # Placeholder to prevent selection
+    "N-1 R/B": 1000000,  # Placeholder to prevent selection
+    "SCOUT D-1 R/B": 1000000,  # Placeholder to prevent selection
+    "DELTA 1 R/B": 1000000,  # Placeholder to prevent selection
+    "DELTA 1 R/B(+CAMEO)": 1000000,  # Placeholder to prevent selection
+    "SCOUT B-1 R/B": 1000000,  # Placeholder to prevent selection
+    "ATLAS H R/B": 1000000,  # Placeholder to prevent selection
 }
 
 
@@ -205,6 +229,17 @@ def wrap_angle_delta(delta: FLOAT):
     """Calculate the wrapped angle difference (-pi, pi) for a given delta."""
     return np.arctan2(np.sin(delta), np.cos(delta))
 
+def burn_propellant(m: FLOAT, dv: FLOAT):
+    """
+    Calculate propellant required for a burn accelerating a mass of m (kg) by dv (km/s).
+
+    Params:
+        m (FLOAT): - Propelled mass
+        dv (FLOAT): - Delta v
+    Returns:
+        FLOAT: Propellant mass
+    """
+    return m * (np.exp(dv/(DRV_ISP*G0)) - 1)
 
 # Delta v for parameter changes (quasi-circular)
 def dv_a(a0: FLOAT, at: FLOAT) -> FLOAT:
