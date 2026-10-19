@@ -39,6 +39,11 @@ target_time = 25*365*24*60*60; %De-orbit target time [s]. First factor is years
 mu_E = 3.986004418E14;
 R_E = 6371E3;
 C_D = 2.2;
+<<<<<<< HEAD
+=======
+A = 4.5; % Frontal area
+m = 1435 + 900; % Combined debris + vehicle mass
+>>>>>>> d77adbfae42efc158383380057ca860d73333ed6
 B = C_D*A/m;
 N = length(atm_table.Altitude_km);
 %B = 2.252378E-03;
@@ -48,6 +53,11 @@ deltaT = zeros(N-1,2);
 
 dt = @(H,Hinit,Hscale,rho_0) - Hscale / (sqrt(mu_E*R_E)*B*rho_0)*(exp(H/Hscale)-exp(Hinit/Hscale));
 
+<<<<<<< HEAD
+=======
+target_time = 25*365*24*60*60; % Target time in seconds
+
+>>>>>>> d77adbfae42efc158383380057ca860d73333ed6
 rho_0 = atm_table.Density_kgm3./exp(-atm_table.Altitude_km./atm_table.ScaleHeight_km);
 
 for i = N-1:-1:1
@@ -65,6 +75,7 @@ for i = 2:N
         break
     end
 end
+<<<<<<< HEAD
 
 a=deltaT(layer:-1:1,:);
 b=deltaT(layer+1:-1:1,:);
@@ -91,3 +102,5 @@ grid
 ylabel('alt / [km]')
 xlabel('time / [years]')
 legend(string(timeVecA(1,1))+ ' km',string(timeVecB(1,1))+ ' km')
+=======
+>>>>>>> d77adbfae42efc158383380057ca860d73333ed6
