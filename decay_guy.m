@@ -30,22 +30,23 @@ mol_weight = [29.0, 24.1, 21.3, 19.2, 17.7, 16.7, 16.0, 15.3, ...
 atm_table = table(altitude_km', density', pressure', scale_height_km', mol_weight', ...
     'VariableNames', {'Altitude_km', 'Density_kgm3', 'Pressure_Pa', 'ScaleHeight_km', 'MolWeight_kgkmol'});
 
+%-----USER-PARAMETERS----------------
+A = 2*2; %Frontal area of debris
+m = 900; %Total de-orbited mass
+target_time = 25*365*24*60*60; %De-orbit target time [s]. First factor is years
+%------------------------------------
+
 mu_E = 3.986004418E14;
 R_E = 6371E3;
-
 C_D = 2.2;
-A = 2*2;
-m = 900;
 B = C_D*A/m;
 N = length(atm_table.Altitude_km);
 %B = 2.252378E-03;
 %atm_table.Properties.VariableNames
 
-deltaT = zeros(N,2);
+deltaT = zeros(N-1,2);
 
 dt = @(H,Hinit,Hscale,rho_0) - Hscale / (sqrt(mu_E*R_E)*B*rho_0)*(exp(H/Hscale)-exp(Hinit/Hscale));
-
-target_time = 25*365*24*60*60;
 
 rho_0 = atm_table.Density_kgm3./exp(-atm_table.Altitude_km./atm_table.ScaleHeight_km);
 
@@ -59,7 +60,34 @@ for i = 2:N
     time_elapse = time_elapse + deltaT(i,2);
 
     if time_elapse >= target_time
-        disp("Maximum orbit alt: " + atm_table.Altitude_km(i) + ", layer: " + i);
+        disp("Maximum orbit alt: " + atm_table.Altitude_km(i-1) + ", layer: " + string(i-1));
+        layer = i-1;
         break
     end
 end
+
+a=deltaT(layer:-1:1,:);
+b=deltaT(layer+1:-1:1,:);
+
+timeVecA = zeros(length(a(:,2)),2);
+timeVecA(:,1) = a(:,1);
+
+timeVecB = zeros(length(b(:,2)),2);
+timeVecB(:,1) = b(:,1);
+
+for i = 2:length(a(:,2))
+    timeVecA(i,2) = timeVecA(i-1,2) + a(i-1,2);
+end
+
+for i = 2:length(b(:,2))
+    timeVecB(i,2) = timeVecB(i-1,2) + b(i-1,2);
+end
+
+close all
+hold on
+plot(timeVecA(:,2)./(60*60*24*365),timeVecA(:,1))
+plot(timeVecB(:,2)./(60*60*24*365),timeVecB(:,1))
+grid
+ylabel('alt / [km]')
+xlabel('time / [years]')
+legend(string(timeVecA(1,1))+ ' km',string(timeVecB(1,1))+ ' km')
